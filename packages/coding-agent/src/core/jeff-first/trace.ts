@@ -263,6 +263,9 @@ export interface QwenRequestRecord {
  */
 export interface LimitCut {
 	thinking_tokens: number;
+	/** True when the server streamed no output-token count and the count was estimated from the thinking characters
+	 * (OpenRouter and other OpenAI-compatible providers: the limit still fires, about a third of a token early). */
+	thinking_tokens_estimated: boolean;
 	thinking_chars: number;
 	continuation: {
 		outcome: "tool_call" | "no_tool_call" | "error" | "runaway";

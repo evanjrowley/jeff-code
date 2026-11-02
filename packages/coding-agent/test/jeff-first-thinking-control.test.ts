@@ -54,7 +54,8 @@ const bash = (command: string, id = "q1"): ToolCall => ({ type: "toolCall", id, 
 type Script =
 	| { answer: AssistantMessage; thinking?: string }
 	| { loopThinking: string }
-	| { countedThinking: string; tokens: number; answer: AssistantMessage };
+	| { countedThinking: string; tokens: number; answer: AssistantMessage }
+	| { uncountedThinking: string; tokens: number; answer: AssistantMessage };
 
 interface Request {
 	reasoning: SimpleStreamOptions["reasoning"];
@@ -99,6 +100,25 @@ function fakeModel(scripts: Script[]) {
 					(partial.content[0] as { thinking: string }).thinking += script.countedThinking;
 					partial.usage = { ...partial.usage, output: partial.usage.output + 1 };
 					stream.push({ type: "thinking_delta", contentIndex: 0, delta: script.countedThinking, partial });
+					await new Promise((resolve) => setImmediate(resolve));
+				}
+				if (signal?.aborted) {
+					partial.errorMessage = "Request was aborted";
+					stream.push({ type: "error", reason: "aborted", error: partial });
+					return;
+				}
+				const message = { ...script.answer, content: [...partial.content, ...script.answer.content] };
+				stream.push({ type: "done", reason: message.stopReason as "toolUse" | "stop", message });
+				return;
+			}
+			if ("uncountedThinking" in script) {
+				// OpenRouter: no cumulative usage per chunk, so the server's output count never rises.
+				const partial = reply([{ type: "thinking", thinking: "", thinkingSignature: "reasoning" }], "aborted");
+				partial.usage = { ...partial.usage, output: 0 };
+				stream.push({ type: "start", partial });
+				for (let index = 0; index < script.tokens && !signal?.aborted; index++) {
+					(partial.content[0] as { thinking: string }).thinking += script.uncountedThinking;
+					stream.push({ type: "thinking_delta", contentIndex: 0, delta: script.uncountedThinking, partial });
 					await new Promise((resolve) => setImmediate(resolve));
 				}
 				if (signal?.aborted) {
@@ -687,12 +707,32 @@ describe("createThinkingControlStreamFn", () => {
 				thinking_limit: 10,
 				limit_cut: {
 					thinking_tokens: 10,
+					thinking_tokens_estimated: false,
 					thinking_chars: cut.length,
 					continuation: { outcome: "tool_call", stop_reason: "toolUse", error_message: null, output_tokens: 40 },
 				},
 			});
 			expect(line.limit_cut.timings_ms.thinking).toBeGreaterThanOrEqual(0);
 			expect(line.limit_cut.timings_ms.continuation).toBeGreaterThanOrEqual(0);
+		});
+
+		it("cuts by an estimated count when the server streams no usage, as OpenRouter does", async () => {
+			const fake = fakeModel([{ uncountedThinking: "hmm ", tokens: 100, answer }, { answer }]);
+			const { final } = await drain(
+				await control(fake.inner, fixedRouter("xhigh"), 10)(model, normalizeContext({ messages: [system, task] }), {
+					sessionId: "s1",
+				}),
+			);
+			// "hmm " is 4 characters, so ceil(28 / 3) = 10 tokens is the first count at the limit.
+			const cut = "hmm ".repeat(7);
+			expect(fake.requests).toHaveLength(2);
+			expect(final.content[0]).toEqual({ type: "thinking", thinking: cut, thinkingSignature: "reasoning" });
+			const [line] = traceLines();
+			expect(line.limit_cut).toMatchObject({
+				thinking_tokens: 10,
+				thinking_tokens_estimated: true,
+				thinking_chars: cut.length,
+			});
 		});
 
 		it("leaves a reply whose thinking stays below the limit alone", async () => {

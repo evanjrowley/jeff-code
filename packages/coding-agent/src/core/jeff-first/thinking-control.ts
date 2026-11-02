@@ -26,6 +26,9 @@ export const REASK_LEVEL: QwenThinkingLevel = "xhigh";
 const GUARDED_LEVELS: readonly QwenThinkingLevel[] = ["off", "low"];
 /** The runaway rules are checked each time a piece of thinking or text has grown by this many characters. */
 const RUNAWAY_CHECK_CHARS = 64;
+/** Characters per thinking token, for servers that stream no output-token count. Deliberately low: the cut then
+ * happens earlier than the true limit rather than later. */
+const CHARS_PER_TOKEN = 3;
 
 export interface ThinkingControlOptions {
 	inner: StreamFn;
@@ -38,12 +41,15 @@ export interface ThinkingControlOptions {
 	thinkingLimit: number | null;
 }
 
-/** The thinking of a reply cut at the limit: the text so far and the server's output-token count at the cut. */
+/** The thinking of a reply cut at the limit: the text so far and the output-token count at the cut. */
 interface ThinkingCut {
 	thinking: string;
 	/** The field the server streamed the thinking in (Jeff-Code's thinkingSignature), kept on the joined reply. */
 	signature: string | undefined;
 	tokens: number;
+	/** True when the server streamed no output-token count, so tokens is estimated from the thinking's characters
+	 * (see CHARS_PER_TOKEN). */
+	estimated: boolean;
 	/** The events of the reply up to the cut (the cut thinking's own events). */
 	events: AssistantMessageEvent[];
 	usage: Usage;
@@ -148,10 +154,23 @@ async function runAttempt(
 		const pieces = new Map<number, { text: string; checkedAt: number }>();
 		let runaway: Attempt["runaway"] = null;
 		let cut: ThinkingCut | null = null;
+		// The limit's count: the server's output tokens when it streams them (vLLM continuous usage), otherwise an
+		// estimate from the thinking characters. OpenRouter sends no cumulative usage per chunk, so without the
+		// fallback the limit would never fire there.
+		let thinkingChars = 0;
+		let serverCount = 0;
+		let serverCounts = false;
 		for await (const event of stream) {
 			if (event.type === "done" || event.type === "error") break;
 			if (cut) continue;
 			events.push(event);
+			if (event.type === "thinking_delta") {
+				thinkingChars += event.delta.length;
+				if (event.partial.usage.output > serverCount) {
+					serverCount = event.partial.usage.output;
+					if (serverCount > 0) serverCounts = true;
+				}
+			}
 			if (runaway || (event.type !== "thinking_delta" && event.type !== "text_delta")) continue;
 			const piece = pieces.get(event.contentIndex) ?? { text: "", checkedAt: 0 };
 			piece.text += event.delta;
@@ -172,18 +191,21 @@ async function runAttempt(
 				}
 			}
 			// The limit: checked on each piece of thinking after the runaway rules, while the reply is still all
-			// thinking. The count is the server's own output-token count so far (every chunk carries it).
+			// thinking. The count is the server's output-token count when it streams one per chunk; otherwise it is
+			// estimated from the thinking characters, and the trace says so.
+			const counted = serverCounts ? serverCount : Math.ceil(thinkingChars / CHARS_PER_TOKEN);
 			if (
 				limit.kind === "limit" &&
 				event.type === "thinking_delta" &&
-				event.partial.usage.output >= limit.tokens &&
+				counted >= limit.tokens &&
 				event.partial.content.every((part) => part.type === "thinking")
 			) {
 				const block = event.partial.content[event.contentIndex] as ThinkingContent;
 				cut = {
 					thinking: block.thinking,
 					signature: block.thinkingSignature,
-					tokens: event.partial.usage.output,
+					tokens: counted,
+					estimated: !serverCounts,
 					events: [...events],
 					usage: { ...event.partial.usage },
 					ms: performance.now() - started,
@@ -255,9 +277,10 @@ function joinCut(cut: ThinkingCut, continuation: Attempt, sent: QwenRequestRecor
 		runaway: continuation.runaway,
 		sent,
 		ms: cut.ms + continuation.ms,
-		limitCut: {
-			thinking_tokens: cut.tokens,
-			thinking_chars: cut.thinking.length,
+			limitCut: {
+				thinking_tokens: cut.tokens,
+				thinking_tokens_estimated: cut.estimated,
+				thinking_chars: cut.thinking.length,
 			continuation: {
 				outcome,
 				stop_reason: stop,
