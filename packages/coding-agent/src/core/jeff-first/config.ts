@@ -23,6 +23,8 @@ export type JeffFirstConfig =
 			outputTrim: OutputTrimSpec;
 			/** JEFF_FIRST_THINKING_LIMIT: thinking tokens per reply before it is cut and continued; null = off. */
 			thinkingLimit: number | null;
+			/** JEFF_FIRST_RULES: take the steps whose answer the state already gives (rules.ts) before asking. */
+			rules: boolean;
 	  }
 	| {
 			mode: "jeff";
@@ -33,6 +35,8 @@ export type JeffFirstConfig =
 			/** The step adapter's name at the service ("jeff" asks the base model itself). */
 			stepAdapter: string;
 			stepThreshold: number;
+			/** JEFF_FIRST_RULES: take the steps whose answer the state already gives (rules.ts) before asking. */
+			rules: boolean;
 			runApproval: RunApproval;
 			driverBuild: string;
 			thinkingRouter: ThinkingRouterSpec;
@@ -90,6 +94,14 @@ export function readThinkingLimit(env: NodeJS.ProcessEnv, mode: string): number 
 		);
 	}
 	return Number(value);
+}
+
+/** JEFF_FIRST_RULES: on to take the state-decided steps documented in rules.ts; unset or off to ask. */
+function readRules(env: NodeJS.ProcessEnv, mode: string): boolean {
+	const value = env.JEFF_FIRST_RULES;
+	if (value === undefined || value === "" || value === "off") return false;
+	if (value === "on") return true;
+	throw new Error(`JeffFirst: JEFF_FIRST_RULES must be on or off, got "${value}"`);
 }
 
 export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
@@ -158,6 +170,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 			jeffUrl,
 			stepAdapter,
 			stepThreshold,
+			rules: readRules(env, mode),
 			runApproval,
 			driverBuild,
 			thinkingRouter: readThinkingRouterSpec(env, mode),
@@ -190,6 +203,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 		taskId,
 		teacherUrl,
 		teacherModel,
+		rules: readRules(env, mode),
 		runApproval,
 		driverBuild,
 		thinkingRouter: readThinkingRouterSpec(env, mode),

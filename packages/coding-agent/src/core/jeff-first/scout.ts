@@ -17,6 +17,7 @@ import { buildLists, type ToolKind } from "./lists.ts";
 import type { MenuToolCall } from "./menu.ts";
 import { argumentPage, NONE_OF_THESE, SHOW_MORE, toolPage } from "./pages.ts";
 import { JEFF_PROVIDER } from "./provider.ts";
+import { ruleStep } from "./rules.ts";
 import { trimState } from "./state.ts";
 import { describeError, errorStream, forwardModelTurn, JEFF_FIRST_ERROR_PREFIX, ZERO_USAGE } from "./stream.ts";
 import type { Level } from "./teacher-prompt.ts";
@@ -46,6 +47,8 @@ export interface ScoutOptions {
 	isSessionTurn: (sessionId: string | undefined) => boolean;
 	runApproval: RunApproval;
 	driverBuild: string;
+	/** Take the steps whose answer the state already gives (rules.ts) before asking the chooser. */
+	rules: boolean;
 }
 
 /** The scout's assistant messages since the large model's last message (or since the user's message). */
@@ -171,19 +174,23 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 				const listsMs = performance.now() - listsStarted;
 				const chooserStarted = performance.now();
 				const levels: LevelRecord[] = [];
+				// A question with one safe answer is answered here, not by the chooser: see rules.ts.
+				const rule = options.rules ? ruleStep({ task, steps, checks: checks.commands, lists }) : null;
 				const ask = async (level: Level): Promise<string> => {
 					const choice = await options.chooser.choose(state, level);
 					levels.push(levelRecord(level, choice, options.chooser.name));
 					return choice.optionId;
 				};
 				let page = 1;
-				let toolId = await ask({ level: "tool", page, options: toolPage(lists, page) });
+				let toolId = rule ? `rule:${rule.rule}` : await ask({ level: "tool", page, options: toolPage(lists, page) });
 				while (toolId === SHOW_MORE.id) {
 					page++;
 					toolId = await ask({ level: "tool", page, options: toolPage(lists, page) });
 				}
 				let action: DecisionRecord["action"];
-				if (toolId === "hand_over") {
+				if (rule) {
+					action = { kind: "step", tool_call: rule.toolCall, rule: rule.rule };
+				} else if (toolId === "hand_over") {
 					action = { kind: "hand_over", why: "chosen" };
 				} else {
 					const kind = toolId as ToolKind;

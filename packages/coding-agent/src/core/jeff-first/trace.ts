@@ -72,7 +72,9 @@ export interface DecisionRecord {
 	check_command_notes: string[];
 	/** Every question asked in this decision, in order; empty when the step cap handed over without asking. */
 	levels: LevelRecord[];
-	action: { kind: "step"; tool_call: MenuToolCall } | { kind: "hand_over"; why: "chosen" | "none_of_these" | "cap" };
+	action:
+		| { kind: "step"; tool_call: MenuToolCall; rule?: "read_named_file" | "run_check_after_write" }
+		| { kind: "hand_over"; why: "chosen" | "none_of_these" | "cap" };
 	timings_ms: { lists: number; chooser: number };
 }
 

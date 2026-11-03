@@ -141,11 +141,44 @@ describe("createScoutStreamFn", () => {
 			isSessionTurn: (id) => id === "s1",
 			runApproval: "all",
 			driverBuild: "test-build",
+			rules: false,
 		});
 	}
 
 	const context = (messages: Message[]) => normalizeContext({ messages: [system(), ...messages] });
 	const start = [{ role: "user", content: "Read README.md and fix the bug.", timestamp: 0 }] as Message[];
+
+	it("takes the step the state decides before asking the chooser, and records the rule", async () => {
+		const chooser = scripted([]);
+		const model = fakeModel(assistant("local", [{ type: "text", text: "done" }], "stop"));
+		const withRules = createScoutStreamFn({
+			inner: model.inner,
+			cwd,
+			taskId: "t1",
+			trace: new TraceWriter(tracePath),
+			chooser,
+			mode: "teacher",
+			isSessionTurn: (id) => id === "s1",
+			runApproval: "all",
+			driverBuild: "test-build",
+			rules: true,
+		});
+		// The task names README.md, which exists in cwd and no step has read.
+		const stream = await withRules(model as never, context(start), { sessionId: "s1" });
+		const { final } = await (async () => {
+			const events: unknown[] = [];
+			for await (const event of stream) events.push(event);
+			return { events, final: await stream.result() };
+		})();
+		expect(chooser.asked).toHaveLength(0);
+		expect(model.calls.count).toBe(0);
+		expect(final.content.at(-1)).toMatchObject({ type: "toolCall", name: "bash" });
+		expect(lines()[0]).toMatchObject({
+			kind: "decision",
+			levels: [],
+			action: { kind: "step", rule: "read_named_file" },
+		});
+	});
 
 	it("returns the chosen step as an assistant message from the scout, without calling the model", async () => {
 		const { inner, calls } = fakeModel(assistant("local", [{ type: "text", text: "hi" }], "stop"));

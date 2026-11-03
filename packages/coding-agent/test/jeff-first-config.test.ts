@@ -62,6 +62,7 @@ describe("readJeffFirstConfig", () => {
 			taskId: "fix-git",
 			teacherUrl: "http://192.168.0.79:8898",
 			teacherModel: "scissero-glm-5.3",
+			rules: false,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-nvfp4@spark-head",
 			thinkingRouter: { kind: "fixed", level: "medium" },
@@ -286,12 +287,21 @@ describe("readJeffFirstConfig", () => {
 			jeffUrl: "http://192.168.2.10:8920",
 			stepAdapter: "jeff-step",
 			stepThreshold: 0.55,
+			rules: false,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-fp8@casdgx01-gpu0",
 			thinkingRouter: { kind: "jeff", url: "http://192.168.2.10:8920", adapter: "jeff-router", threshold: 0.4 },
 			outputTrim: { kind: "fixed", choice: "all" },
 			thinkingLimit: null,
 		});
+	});
+
+	it("reads JEFF_FIRST_RULES on, and rejects anything else", () => {
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_RULES: "on" })).toMatchObject({ rules: true });
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_RULES: "off" })).toMatchObject({ rules: false });
+		expect(() => readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_RULES: "yes" })).toThrow(
+			/JEFF_FIRST_RULES must be on or off, got "yes"/,
+		);
 	});
 
 	it("reads jeff mode with a fixed router", () => {
