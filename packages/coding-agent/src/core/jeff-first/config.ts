@@ -29,6 +29,8 @@ export type JeffFirstConfig =
 			narrowTools: number | null;
 			/** JEFF_FIRST_FORCED_CHOICE: ask among tools only, with a low share as the hand-over (narrow.ts). */
 			forcedChoice: boolean;
+			/** JEFF_FIRST_EVIDENCE_GATE: force only while an option names something concrete (evidence.ts). */
+			evidenceGate: boolean;
 	  }
 	| {
 			mode: "jeff";
@@ -45,6 +47,8 @@ export type JeffFirstConfig =
 			narrowTools: number | null;
 			/** JEFF_FIRST_FORCED_CHOICE: ask among tools only, with a low share as the hand-over (narrow.ts). */
 			forcedChoice: boolean;
+			/** JEFF_FIRST_EVIDENCE_GATE: force only while an option names something concrete (evidence.ts). */
+			evidenceGate: boolean;
 			runApproval: RunApproval;
 			driverBuild: string;
 			thinkingRouter: ThinkingRouterSpec;
@@ -110,6 +114,14 @@ function readRules(env: NodeJS.ProcessEnv, mode: string): boolean {
 	if (value === undefined || value === "" || value === "off") return false;
 	if (value === "on") return true;
 	throw new Error(`JeffFirst: JEFF_FIRST_RULES must be on or off, got "${value}"`);
+}
+
+/** JEFF_FIRST_EVIDENCE_GATE: on forces a choice only while a concrete option remains; unset or off always forces. */
+function readEvidenceGate(env: NodeJS.ProcessEnv): boolean {
+	const value = env.JEFF_FIRST_EVIDENCE_GATE;
+	if (value === undefined || value === "" || value === "off") return false;
+	if (value === "on") return true;
+	throw new Error(`JeffFirst: JEFF_FIRST_EVIDENCE_GATE must be on or off, got "${value}"`);
 }
 
 /** JEFF_FIRST_NARROW_TOOLS: a whole number of tool kinds from 1 to 12; unset asks about all of them. */
@@ -200,6 +212,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 			rules: readRules(env, mode),
 			narrowTools: readNarrowTools(env),
 			forcedChoice: readForcedChoice(env),
+			evidenceGate: readEvidenceGate(env),
 			runApproval,
 			driverBuild,
 			thinkingRouter: readThinkingRouterSpec(env, mode),
@@ -235,6 +248,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 		rules: readRules(env, mode),
 		narrowTools: readNarrowTools(env),
 		forcedChoice: readForcedChoice(env),
+		evidenceGate: readEvidenceGate(env),
 		runApproval,
 		driverBuild,
 		thinkingRouter: readThinkingRouterSpec(env, mode),

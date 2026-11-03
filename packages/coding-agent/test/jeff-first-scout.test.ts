@@ -245,6 +245,35 @@ describe("createScoutStreamFn", () => {
 		expect(lines()[0].action).toMatchObject({ kind: "step" });
 	});
 
+	it("hands over before asking when the evidence gate finds only probes", async () => {
+		const asked: Level[] = [];
+		const chooser = forced("list", false, asked);
+		const model = fakeModel(assistant("local", [{ type: "text", text: "done" }], "stop"));
+		const gated = createScoutStreamFn({
+			inner: model.inner,
+			cwd,
+			taskId: "t1",
+			trace: new TraceWriter(tracePath),
+			chooser,
+			mode: "jeff",
+			isSessionTurn: (id) => id === "s1",
+			runApproval: "all",
+			driverBuild: "test-build",
+			rules: false,
+			narrowTools: null,
+			forcedChoice: true,
+			evidenceGate: true,
+		});
+		// A task that names no file leaves only probes on the page.
+		const probesOnly = [{ role: "user", content: "List what is in this folder.", timestamp: 0 }] as Message[];
+		const stream = await gated(model as never, context(probesOnly), { sessionId: "s1" });
+		for await (const _ of stream) void _;
+		await stream.result();
+		expect(asked).toHaveLength(0);
+		expect(model.calls.count).toBe(1);
+		expect(lines()[0].action).toEqual({ kind: "hand_over", why: "no_evidence" });
+	});
+
 	it("hands over when the forced choice is below the threshold", async () => {
 		const chooser = forced("read", true);
 		const model = fakeModel(assistant("local", [{ type: "text", text: "done" }], "stop"));

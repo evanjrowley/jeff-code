@@ -477,6 +477,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			rules: jeffFirst.rules,
 			narrowTools: jeffFirst.narrowTools,
 			forcedChoice: jeffFirst.forcedChoice,
+			evidenceGate: jeffFirst.evidenceGate,
 		});
 	}
 

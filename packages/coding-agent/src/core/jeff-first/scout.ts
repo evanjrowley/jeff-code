@@ -17,6 +17,7 @@ import { buildLists, type ToolKind } from "./lists.ts";
 import type { MenuToolCall } from "./menu.ts";
 import { argumentPage, NONE_OF_THESE, SHOW_MORE, toolPage } from "./pages.ts";
 import { JEFF_PROVIDER } from "./provider.ts";
+import { hasEvidence } from "./evidence.ts";
 import { narrowLists } from "./narrow.ts";
 import { ruleStep } from "./rules.ts";
 import { trimState } from "./state.ts";
@@ -54,6 +55,8 @@ export interface ScoutOptions {
 	narrowTools: number | null;
 	/** Ask the chooser among the tools only, with hand-over as the below-threshold answer (narrow.ts). */
 	forcedChoice: boolean;
+	/** Force a choice only while an option names something concrete from the run (evidence.ts). */
+	evidenceGate: boolean;
 }
 
 /** The scout's assistant messages since the large model's last message (or since the user's message). */
@@ -177,6 +180,7 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					runApproval: options.runApproval,
 				});
 				const narrowed = options.narrowTools === null ? all : narrowLists(all, options.narrowTools);
+				const gateBlocks = options.forcedChoice && options.evidenceGate && !hasEvidence(narrowed);
 				// The forced choice drops hand-over from the page: the chooser must name a tool, and a share
 				// below the threshold becomes the hand-over below.
 				const lists =
@@ -184,6 +188,15 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 						? { ...narrowed, tools: narrowed.tools.filter((tool) => tool.id !== "hand_over") }
 						: narrowed;
 				const listsMs = performance.now() - listsStarted;
+				if (gateBlocks) {
+					record = {
+						...base,
+						levels: [],
+						action: { kind: "hand_over", why: "no_evidence" },
+						timings_ms: { lists: listsMs, chooser: 0 },
+					};
+					call = null;
+				} else {
 				const chooserStarted = performance.now();
 				const levels: LevelRecord[] = [];
 				// A question with one safe answer is answered here, not by the chooser: see rules.ts.
@@ -250,6 +263,7 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					timings_ms: { lists: listsMs, chooser: performance.now() - chooserStarted },
 				};
 				call = action.kind === "step" ? action.tool_call : null;
+				}
 			}
 			options.trace.append(record);
 		} catch (error) {
