@@ -17,6 +17,7 @@ import { buildLists, type ToolKind } from "./lists.ts";
 import type { MenuToolCall } from "./menu.ts";
 import { argumentPage, NONE_OF_THESE, SHOW_MORE, toolPage } from "./pages.ts";
 import { JEFF_PROVIDER } from "./provider.ts";
+import { narrowLists } from "./narrow.ts";
 import { ruleStep } from "./rules.ts";
 import { trimState } from "./state.ts";
 import { describeError, errorStream, forwardModelTurn, JEFF_FIRST_ERROR_PREFIX, ZERO_USAGE } from "./stream.ts";
@@ -49,6 +50,8 @@ export interface ScoutOptions {
 	driverBuild: string;
 	/** Take the steps whose answer the state already gives (rules.ts) before asking the chooser. */
 	rules: boolean;
+	/** Ask the chooser about at most this many tool kinds; null asks about all of them (narrow.ts). */
+	narrowTools: number | null;
 }
 
 /** The scout's assistant messages since the large model's last message (or since the user's message). */
@@ -162,7 +165,7 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 				};
 				call = null;
 			} else {
-				const lists = buildLists({
+				const all = buildLists({
 					cwd: options.cwd,
 					task,
 					steps,
@@ -171,11 +174,12 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					facts,
 					runApproval: options.runApproval,
 				});
+				const lists = options.narrowTools === null ? all : narrowLists(all, options.narrowTools);
 				const listsMs = performance.now() - listsStarted;
 				const chooserStarted = performance.now();
 				const levels: LevelRecord[] = [];
 				// A question with one safe answer is answered here, not by the chooser: see rules.ts.
-				const rule = options.rules ? ruleStep({ task, steps, checks: checks.commands, lists }) : null;
+				const rule = options.rules ? ruleStep({ task, steps, checks: checks.commands, lists: all }) : null;
 				const ask = async (level: Level): Promise<string> => {
 					const choice = await options.chooser.choose(state, level);
 					levels.push(levelRecord(level, choice, options.chooser.name));

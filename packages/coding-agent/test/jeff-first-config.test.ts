@@ -63,6 +63,7 @@ describe("readJeffFirstConfig", () => {
 			teacherUrl: "http://192.168.0.79:8898",
 			teacherModel: "scissero-glm-5.3",
 			rules: false,
+			narrowTools: null,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-nvfp4@spark-head",
 			thinkingRouter: { kind: "fixed", level: "medium" },
@@ -288,6 +289,7 @@ describe("readJeffFirstConfig", () => {
 			stepAdapter: "jeff-step",
 			stepThreshold: 0.55,
 			rules: false,
+			narrowTools: null,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-fp8@casdgx01-gpu0",
 			thinkingRouter: { kind: "jeff", url: "http://192.168.2.10:8920", adapter: "jeff-router", threshold: 0.4 },
@@ -302,6 +304,16 @@ describe("readJeffFirstConfig", () => {
 		expect(() => readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_RULES: "yes" })).toThrow(
 			/JEFF_FIRST_RULES must be on or off, got "yes"/,
 		);
+	});
+
+	it("reads JEFF_FIRST_NARROW_TOOLS and rejects anything else", () => {
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_NARROW_TOOLS: "3" })).toMatchObject({ narrowTools: 3 });
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_NARROW_TOOLS: "" })).toMatchObject({ narrowTools: null });
+		for (const value of ["0", "13", "2.5", "three", "-1"]) {
+			expect(() => readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_NARROW_TOOLS: value })).toThrow(
+				new RegExp(`JEFF_FIRST_NARROW_TOOLS must be a whole number from 1 to 12, got "${value}"`),
+			);
+		}
 	});
 
 	it("reads jeff mode with a fixed router", () => {

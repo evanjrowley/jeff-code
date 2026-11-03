@@ -142,6 +142,7 @@ describe("createScoutStreamFn", () => {
 			runApproval: "all",
 			driverBuild: "test-build",
 			rules: false,
+			narrowTools: null,
 		});
 	}
 
@@ -162,6 +163,7 @@ describe("createScoutStreamFn", () => {
 			runApproval: "all",
 			driverBuild: "test-build",
 			rules: true,
+			narrowTools: null,
 		});
 		// The task names README.md, which exists in cwd and no step has read.
 		const stream = await withRules(model as never, context(start), { sessionId: "s1" });

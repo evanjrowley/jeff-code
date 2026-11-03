@@ -25,6 +25,8 @@ export type JeffFirstConfig =
 			thinkingLimit: number | null;
 			/** JEFF_FIRST_RULES: take the steps whose answer the state already gives (rules.ts) before asking. */
 			rules: boolean;
+			/** JEFF_FIRST_NARROW_TOOLS: ask about at most this many tool kinds; null asks about all (narrow.ts). */
+			narrowTools: number | null;
 	  }
 	| {
 			mode: "jeff";
@@ -37,6 +39,8 @@ export type JeffFirstConfig =
 			stepThreshold: number;
 			/** JEFF_FIRST_RULES: take the steps whose answer the state already gives (rules.ts) before asking. */
 			rules: boolean;
+			/** JEFF_FIRST_NARROW_TOOLS: ask about at most this many tool kinds; null asks about all (narrow.ts). */
+			narrowTools: number | null;
 			runApproval: RunApproval;
 			driverBuild: string;
 			thinkingRouter: ThinkingRouterSpec;
@@ -102,6 +106,17 @@ function readRules(env: NodeJS.ProcessEnv, mode: string): boolean {
 	if (value === undefined || value === "" || value === "off") return false;
 	if (value === "on") return true;
 	throw new Error(`JeffFirst: JEFF_FIRST_RULES must be on or off, got "${value}"`);
+}
+
+/** JEFF_FIRST_NARROW_TOOLS: a whole number of tool kinds from 1 to 12; unset asks about all of them. */
+function readNarrowTools(env: NodeJS.ProcessEnv): number | null {
+	const value = env.JEFF_FIRST_NARROW_TOOLS;
+	if (value === undefined || value === "") return null;
+	const most = Number(value);
+	if (!Number.isInteger(most) || most < 1 || most > 12) {
+		throw new Error(`JeffFirst: JEFF_FIRST_NARROW_TOOLS must be a whole number from 1 to 12, got "${value}"`);
+	}
+	return most;
 }
 
 export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
@@ -171,6 +186,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 			stepAdapter,
 			stepThreshold,
 			rules: readRules(env, mode),
+			narrowTools: readNarrowTools(env),
 			runApproval,
 			driverBuild,
 			thinkingRouter: readThinkingRouterSpec(env, mode),
@@ -204,6 +220,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 		teacherUrl,
 		teacherModel,
 		rules: readRules(env, mode),
+		narrowTools: readNarrowTools(env),
 		runApproval,
 		driverBuild,
 		thinkingRouter: readThinkingRouterSpec(env, mode),
