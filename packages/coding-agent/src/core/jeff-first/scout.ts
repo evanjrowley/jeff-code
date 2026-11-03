@@ -52,6 +52,8 @@ export interface ScoutOptions {
 	rules: boolean;
 	/** Ask the chooser about at most this many tool kinds; null asks about all of them (narrow.ts). */
 	narrowTools: number | null;
+	/** Ask the chooser among the tools only, with hand-over as the below-threshold answer (narrow.ts). */
+	forcedChoice: boolean;
 }
 
 /** The scout's assistant messages since the large model's last message (or since the user's message). */
@@ -174,7 +176,13 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					facts,
 					runApproval: options.runApproval,
 				});
-				const lists = options.narrowTools === null ? all : narrowLists(all, options.narrowTools);
+				const narrowed = options.narrowTools === null ? all : narrowLists(all, options.narrowTools);
+				// The forced choice drops hand-over from the page: the chooser must name a tool, and a share
+				// below the threshold becomes the hand-over below.
+				const lists =
+					options.forcedChoice && narrowed.tools.length > 1
+						? { ...narrowed, tools: narrowed.tools.filter((tool) => tool.id !== "hand_over") }
+						: narrowed;
 				const listsMs = performance.now() - listsStarted;
 				const chooserStarted = performance.now();
 				const levels: LevelRecord[] = [];
@@ -186,16 +194,25 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					return choice.optionId;
 				};
 				let page = 1;
-				let toolId = rule ? `rule:${rule.rule}` : await ask({ level: "tool", page, options: toolPage(lists, page) });
+				let firstBelowThreshold = false;
+				const askFirst = async (): Promise<string> => {
+					const question = { level: "tool" as const, page, options: toolPage(lists, page) };
+					const choice = await options.chooser.choose(state, question);
+					levels.push(levelRecord(question, choice, options.chooser.name));
+					firstBelowThreshold = choice.belowThreshold === true;
+					return choice.optionId;
+				};
+				let toolId = rule ? `rule:${rule.rule}` : await askFirst();
 				while (toolId === SHOW_MORE.id) {
 					page++;
-					toolId = await ask({ level: "tool", page, options: toolPage(lists, page) });
+					toolId = await askFirst();
 				}
 				let action: DecisionRecord["action"];
+				const below = firstBelowThreshold;
 				if (rule) {
 					action = { kind: "step", tool_call: rule.toolCall, rule: rule.rule };
-				} else if (toolId === "hand_over") {
-					action = { kind: "hand_over", why: "chosen" };
+				} else if (toolId === "hand_over" || below) {
+					action = { kind: "hand_over", why: below ? "below_threshold" : "chosen" };
 				} else {
 					const kind = toolId as ToolKind;
 					const tool = lists.tools.find((option) => option.id === kind);

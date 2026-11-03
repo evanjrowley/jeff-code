@@ -64,6 +64,8 @@ describe("readJeffFirstConfig", () => {
 			teacherModel: "scissero-glm-5.3",
 			rules: false,
 			narrowTools: null,
+			forcedChoice: false,
+			forcedChoice: false,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-nvfp4@spark-head",
 			thinkingRouter: { kind: "fixed", level: "medium" },
@@ -290,6 +292,7 @@ describe("readJeffFirstConfig", () => {
 			stepThreshold: 0.55,
 			rules: false,
 			narrowTools: null,
+			forcedChoice: false,
 			runApproval: "all",
 			driverBuild: "qwen3.8-27b-fp8@casdgx01-gpu0",
 			thinkingRouter: { kind: "jeff", url: "http://192.168.2.10:8920", adapter: "jeff-router", threshold: 0.4 },
@@ -314,6 +317,14 @@ describe("readJeffFirstConfig", () => {
 				new RegExp(`JEFF_FIRST_NARROW_TOOLS must be a whole number from 1 to 12, got "${value}"`),
 			);
 		}
+	});
+
+	it("reads JEFF_FIRST_FORCED_CHOICE on, and rejects anything else", () => {
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_FORCED_CHOICE: "on" })).toMatchObject({ forcedChoice: true });
+		expect(readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_FORCED_CHOICE: "" })).toMatchObject({ forcedChoice: false });
+		expect(() => readJeffFirstConfig({ ...jeffEnv, JEFF_FIRST_FORCED_CHOICE: "true" })).toThrow(
+			/JEFF_FIRST_FORCED_CHOICE must be on or off, got "true"/,
+		);
 	});
 
 	it("reads jeff mode with a fixed router", () => {

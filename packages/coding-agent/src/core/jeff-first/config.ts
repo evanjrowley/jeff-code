@@ -27,6 +27,8 @@ export type JeffFirstConfig =
 			rules: boolean;
 			/** JEFF_FIRST_NARROW_TOOLS: ask about at most this many tool kinds; null asks about all (narrow.ts). */
 			narrowTools: number | null;
+			/** JEFF_FIRST_FORCED_CHOICE: ask among tools only, with a low share as the hand-over (narrow.ts). */
+			forcedChoice: boolean;
 	  }
 	| {
 			mode: "jeff";
@@ -41,6 +43,8 @@ export type JeffFirstConfig =
 			rules: boolean;
 			/** JEFF_FIRST_NARROW_TOOLS: ask about at most this many tool kinds; null asks about all (narrow.ts). */
 			narrowTools: number | null;
+			/** JEFF_FIRST_FORCED_CHOICE: ask among tools only, with a low share as the hand-over (narrow.ts). */
+			forcedChoice: boolean;
 			runApproval: RunApproval;
 			driverBuild: string;
 			thinkingRouter: ThinkingRouterSpec;
@@ -109,6 +113,14 @@ function readRules(env: NodeJS.ProcessEnv, mode: string): boolean {
 }
 
 /** JEFF_FIRST_NARROW_TOOLS: a whole number of tool kinds from 1 to 12; unset asks about all of them. */
+/** JEFF_FIRST_FORCED_CHOICE: on drops hand-over from the tool page; unset or off keeps it. */
+function readForcedChoice(env: NodeJS.ProcessEnv): boolean {
+	const value = env.JEFF_FIRST_FORCED_CHOICE;
+	if (value === undefined || value === "" || value === "off") return false;
+	if (value === "on") return true;
+	throw new Error(`JeffFirst: JEFF_FIRST_FORCED_CHOICE must be on or off, got "${value}"`);
+}
+
 function readNarrowTools(env: NodeJS.ProcessEnv): number | null {
 	const value = env.JEFF_FIRST_NARROW_TOOLS;
 	if (value === undefined || value === "") return null;
@@ -187,6 +199,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 			stepThreshold,
 			rules: readRules(env, mode),
 			narrowTools: readNarrowTools(env),
+			forcedChoice: readForcedChoice(env),
 			runApproval,
 			driverBuild,
 			thinkingRouter: readThinkingRouterSpec(env, mode),
@@ -221,6 +234,7 @@ export function readJeffFirstConfig(env: NodeJS.ProcessEnv): JeffFirstConfig {
 		teacherModel,
 		rules: readRules(env, mode),
 		narrowTools: readNarrowTools(env),
+		forcedChoice: readForcedChoice(env),
 		runApproval,
 		driverBuild,
 		thinkingRouter: readThinkingRouterSpec(env, mode),

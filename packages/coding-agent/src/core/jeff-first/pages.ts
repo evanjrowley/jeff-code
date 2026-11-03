@@ -33,9 +33,10 @@ export function toolPage(lists: Lists, page: number): ShownOption[] {
 		const count = options.length === 1 ? "1 option" : `${options.length} options`;
 		shown.push({ id: tool.id, description: `${tool.description}: ${preview} (${count})` });
 	}
+	// A page may leave out hand-over on purpose: the forced choice (narrow.ts) asks the chooser among the
+	// tools only, and the scout turns a low share into the hand-over itself.
 	const handOver = lists.tools.find((tool) => tool.id === "hand_over");
-	if (!handOver) throw new Error("the tool list has no hand-over option");
-	shown.push(handOver);
+	if (handOver) shown.push(handOver);
 	if (more) shown.push(SHOW_MORE);
 	return shown;
 }

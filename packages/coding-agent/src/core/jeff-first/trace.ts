@@ -74,7 +74,7 @@ export interface DecisionRecord {
 	levels: LevelRecord[];
 	action:
 		| { kind: "step"; tool_call: MenuToolCall; rule?: "read_named_file" | "run_check_after_write" }
-		| { kind: "hand_over"; why: "chosen" | "none_of_these" | "cap" };
+		| { kind: "hand_over"; why: "chosen" | "none_of_these" | "cap" | "below_threshold" };
 	timings_ms: { lists: number; chooser: number };
 }
 

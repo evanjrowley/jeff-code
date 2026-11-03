@@ -49,6 +49,11 @@ export interface Choice {
 	jeffCut: JeffCut | null;
 	/** Set when Jeff abstained because the question cannot be cut to fit (the scout then handed over); else null. */
 	jeffAbstained: JeffCannotFit | null;
+	/**
+	 * Set when the page offered no hand-over option (the forced choice) and the best option's share was
+	 * below the threshold: the scout hands over on this answer rather than acting on it.
+	 */
+	belowThreshold?: boolean;
 }
 
 /** A teacher failure worth retrying: no answer in time, no connection, rate limited, or a server error. */
@@ -226,8 +231,14 @@ export class JeffChooser implements Chooser {
 	async choose(state: JeffState, level: Level): Promise<Choice> {
 		const options: Array<{ id: string; description: string }> = level.options;
 		const handOver = level.level === "tool" ? "hand_over" : NONE_OF_THESE.id;
-		if (!options.some((option) => option.id === handOver)) {
+		// A tool page without hand-over is the forced choice (narrow.ts): Jeff must pick a tool, and the
+		// threshold only decides whether the scout acts on that pick or hands over (belowThreshold).
+		const forced = level.level === "tool" && !options.some((option) => option.id === handOver);
+		if (!forced && !options.some((option) => option.id === handOver)) {
 			throw new Error(`the ${level.level} page ${level.page} has no ${handOver} option`);
+		}
+		if (forced && options.length === 0) {
+			throw new Error(`the tool page ${level.page} has no options to choose from`);
 		}
 		const answer = await this.service.ask(this.adapter, {
 			state: renderState(state),
@@ -240,11 +251,12 @@ export class JeffChooser implements Chooser {
 				`Jeff abstained: the question cannot be cut to fit its ${limit}-token limit (${tokens_before} tokens, ` +
 				`at least ${tokens_least} with the state cut): hand over (${handOver}) (${Math.round(answer.ms)} ms)`;
 			return {
-				optionId: handOver,
+				optionId: forced ? options[0].id : handOver,
 				shares: {},
 				picks: [{ optionId: handOver, reason, failedAttempts: answer.failedAttempts }],
 				jeffCut: null,
 				jeffAbstained: answer.cannotFit,
+				...(forced ? { belowThreshold: true } : {}),
 			};
 		}
 		let best = options[0].id;
@@ -253,7 +265,7 @@ export class JeffChooser implements Chooser {
 		}
 		const probability = answer.probabilities[best];
 		const taken = probability >= this.threshold;
-		const optionId = taken ? best : handOver;
+		const optionId = taken || forced ? best : handOver;
 		const busy = answer.busyWaits > 0 ? `; the service was busy ${answer.busyWaits} times` : "";
 		const cut =
 			answer.cut === null
@@ -269,6 +281,7 @@ export class JeffChooser implements Chooser {
 			picks: [{ optionId, reason, failedAttempts: answer.failedAttempts }],
 			jeffCut: answer.cut,
 			jeffAbstained: null,
+			...(forced && !taken ? { belowThreshold: true } : {}),
 		};
 	}
 }

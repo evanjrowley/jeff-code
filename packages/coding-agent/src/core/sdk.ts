@@ -476,6 +476,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			driverBuild: jeffFirst.driverBuild,
 			rules: jeffFirst.rules,
 			narrowTools: jeffFirst.narrowTools,
+			forcedChoice: jeffFirst.forcedChoice,
 		});
 	}
 
