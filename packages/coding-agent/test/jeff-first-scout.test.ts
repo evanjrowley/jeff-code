@@ -274,6 +274,46 @@ describe("createScoutStreamFn", () => {
 		expect(lines()[0].action).toEqual({ kind: "hand_over", why: "no_evidence" });
 	});
 
+	it("asks the forced choice when the task names a file that nobody has read", async () => {
+		const asked: Level[] = [];
+		// Answer each page with its first option, which is what a forced choice must pick from.
+		const chooser: Chooser = {
+			name: "jeff:fake",
+			async choose(_state, level): Promise<Choice> {
+				asked.push(level);
+				const optionId = level.options[0].id;
+				return {
+					optionId,
+					shares: { [optionId]: 0.8 },
+					picks: [{ optionId, reason: "scripted", failedAttempts: [] }],
+					jeffCut: null,
+					jeffAbstained: null,
+				};
+			},
+		} as Chooser;
+		const model = fakeModel(assistant("local", [{ type: "text", text: "done" }], "stop"));
+		const gated = createScoutStreamFn({
+			inner: model.inner,
+			cwd,
+			taskId: "t1",
+			trace: new TraceWriter(tracePath),
+			chooser,
+			mode: "jeff",
+			isSessionTurn: (id) => id === "s1",
+			runApproval: "all",
+			driverBuild: "test-build",
+			rules: false,
+			narrowTools: null,
+			forcedChoice: true,
+			evidenceGate: true,
+		});
+		const stream = await gated(model as never, context(start), { sessionId: "s1" });
+		for await (const _ of stream) void _;
+		await stream.result();
+		expect(asked.length).toBeGreaterThan(0);
+		expect(lines()[0].action).toMatchObject({ kind: "step" });
+	});
+
 	it("hands over when the forced choice is below the threshold", async () => {
 		const chooser = forced("read", true);
 		const model = fakeModel(assistant("local", [{ type: "text", text: "done" }], "stop"));

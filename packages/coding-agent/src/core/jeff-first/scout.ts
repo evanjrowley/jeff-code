@@ -17,7 +17,6 @@ import { buildLists, type ToolKind } from "./lists.ts";
 import type { MenuToolCall } from "./menu.ts";
 import { argumentPage, NONE_OF_THESE, SHOW_MORE, toolPage } from "./pages.ts";
 import { JEFF_PROVIDER } from "./provider.ts";
-import { hasEvidence } from "./evidence.ts";
 import { narrowLists } from "./narrow.ts";
 import { ruleStep } from "./rules.ts";
 import { trimState } from "./state.ts";
@@ -55,7 +54,7 @@ export interface ScoutOptions {
 	narrowTools: number | null;
 	/** Ask the chooser among the tools only, with hand-over as the below-threshold answer (narrow.ts). */
 	forcedChoice: boolean;
-	/** Force a choice only while an option names something concrete from the run (evidence.ts). */
+	/** Force a choice only while a state-decided step (rules.ts) is available. */
 	evidenceGate: boolean;
 }
 
@@ -180,7 +179,14 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 					runApproval: options.runApproval,
 				});
 				const narrowed = options.narrowTools === null ? all : narrowLists(all, options.narrowTools);
-				const gateBlocks = options.forcedChoice && options.evidenceGate && !hasEvidence(narrowed);
+				// The gate's evidence is the rules' evidence: a file the task names or the model just wrote and
+				// nobody has read, or a check command that has not run since the last write. Without one of
+				// those, forcing a choice only buys a probe (2026-11-02 measurement).
+				const pending = ruleStep({ task, steps, checks: checks.commands, lists: all });
+				const gateBlocks =
+					options.forcedChoice &&
+					options.evidenceGate &&
+					pending === null;
 				// The forced choice drops hand-over from the page: the chooser must name a tool, and a share
 				// below the threshold becomes the hand-over below.
 				const lists =
@@ -200,7 +206,7 @@ export function createScoutStreamFn(options: ScoutOptions): StreamFn {
 				const chooserStarted = performance.now();
 				const levels: LevelRecord[] = [];
 				// A question with one safe answer is answered here, not by the chooser: see rules.ts.
-				const rule = options.rules ? ruleStep({ task, steps, checks: checks.commands, lists: all }) : null;
+				const rule = options.rules ? pending : null;
 				const ask = async (level: Level): Promise<string> => {
 					const choice = await options.chooser.choose(state, level);
 					levels.push(levelRecord(level, choice, options.chooser.name));
